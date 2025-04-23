@@ -1,18 +1,68 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship, Session
 from jose import jwt
 from datetime import datetime, timedelta
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import json
-from fastapi import Request
 from uuid import uuid4
-from datetime import datetime, timedelta
-from pydantic import BaseModel
 
+# --- Database Setup ---
+DATABASE_URL = "postgresql://postgres:postgres@localhost/postgres"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# --- JWT Setup ---
 SECRET_KEY = "my_secret_key"
 ALGORITHM = "HS256"
 
+# --- Models ---
+class UserModel(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password = Column(String)
+
+class PostModel(Base):
+    __tablename__ = "posts"
+    id = Column(String, primary_key=True, index=True)
+    username = Column(String, ForeignKey("users.username"))
+    content = Column(Text)
+    image = Column(String, default="")
+    likes = Column(Integer, default=0)
+    liked_by = Column(Text, default="")  # Can be JSON or separate table for real app
+
+    comments = relationship("CommentModel", back_populates="post")
+
+class CommentModel(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(String, ForeignKey("posts.id"))
+    username = Column(String)
+    content = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    post = relationship("PostModel", back_populates="comments")
+
+Base.metadata.create_all(bind=engine)
+
+# --- Pydantic Schemas ---
+class User(BaseModel):
+    username: str
+    password: str
+
+class Post(BaseModel):
+    content: str
+    image: str = ""
+
+class Comment(BaseModel):
+    content: str
+
+# --- App Setup ---
 app = FastAPI()
 
 app.add_middleware(
@@ -23,168 +73,84 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Comment(BaseModel):
-    content: str
-
-class User(BaseModel):
-    username: str
-    password: str
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
 security = HTTPBearer()
 
-def load_users():
-    with open("users.json") as f:
-        return json.load(f)
-
-def get_current_user(token: HTTPAuthorizationCredentials = Depends(security)):
-    print(token)
-    payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=["HS256"])
-    return payload["username"]
-
-from fastapi import Request
-from uuid import uuid4
-
-class Post(BaseModel):
-    content: str
-    image: str = ""
-    likes: int = 0
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 def create_token(username):
     payload = {
         "username": username,
-        "exp": datetime.utcnow() + timedelta(hours=1)  # Optional expiration
+        "exp": datetime.utcnow() + timedelta(hours=1)
     }
-    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    return token
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-@app.post("/posts/{post_id}/comments")
-def add_comment(post_id: str, comment: Comment, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        print(payload)
-        username = payload.get("username")
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    with open("posts.json") as f:
-        posts = json.load(f)
-
-    for post in posts:
-        if post["id"] == post_id:
-            if "comments" not in post:
-                post["comments"] = []
-            post["comments"].append({
-                "username": username,
-                "content": comment.content,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            break
-    else:
-        raise HTTPException(status_code=404, detail="Post not found")
-
-    with open("posts.json", "w") as f:
-        json.dump(posts, f, indent=2)
-
-    return {"message": "Comment added"}
-
-@app.get("/posts")
-def get_posts():
-    with open("posts.json") as f:
-        posts = json.load(f)
-    return posts
-
-@app.post("/posts")
-def create_post(post: Post, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("username")  # Use 'username' instead of 'sub'
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    with open("posts.json") as f:
-        posts = json.load(f)
-
-    new_post = {
-        "id": str(uuid4()),
-        "username": username,
-        "content": post.content,
-        "image": post.image,
-        "likes": 0
-    }
-
-    posts.insert(0, new_post)
-
-    with open("posts.json", "w") as f:
-        json.dump(posts, f, indent=2)
-
-    return new_post
-
-
-@app.patch("/posts/{post_id}/like")
-def like_post(post_id: str, current_user: str = Depends(get_current_user)):
-    with open("posts.json", "r") as f:
-        posts = json.load(f)
-
-    for post in posts:
-        if post["id"] == post_id:
-            if "liked_by" not in post:
-                post["liked_by"] = []
-
-            if current_user in post["liked_by"]:
-                raise HTTPException(status_code=400, detail="Already liked")
-
-            post["likes"] += 1
-            post["liked_by"].append(current_user)
-
-            with open("posts.json", "w") as f:
-                json.dump(posts, f, indent=2)
-            return post
-
-    raise HTTPException(status_code=404, detail="Post not found")
+def get_current_user(token: HTTPAuthorizationCredentials = Depends(security)):
+    payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+    return payload["username"]
 
 @app.post("/signup")
-def signup(user: User):
-    with open("users.json") as f:
-        users = json.load(f)
-
-    if any(u["username"] == user.username for u in users):
+def signup(user: User, db: Session = Depends(get_db)):
+    if db.query(UserModel).filter_by(username=user.username).first():
         raise HTTPException(status_code=400, detail="Username already exists.")
-
-    new_user = {"username": user.username, "password": user.password}
-    users.append(new_user)
-
-    with open("users.json", "w") as f:
-        json.dump(users, f, indent=2)
-
-    # Return token just like login
+    new_user = UserModel(username=user.username, password=user.password)
+    db.add(new_user)
+    db.commit()
     token = create_token(user.username)
     return {"token": token}
 
 @app.post("/login")
-def login(user: User):
-    with open("users.json", "r") as f:
-        users = json.load(f)
+def login(user: User, db: Session = Depends(get_db)):
+    db_user = db.query(UserModel).filter_by(username=user.username, password=user.password).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token(user.username)
+    return {"token": token}
 
-    for u in users:
-        if u["username"] == user.username and u["password"] == user.password:
-            token = create_token(user.username)
-            return {"token": token}  # ✅ THIS SHOULD BE RETURNED
+@app.post("/posts")
+def create_post(post: Post, credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    username = get_current_user(credentials)
+    new_post = PostModel(
+        id=str(uuid4()),
+        username=username,
+        content=post.content,
+        image=post.image,
+    )
+    db.add(new_post)
+    db.commit()
+    return new_post
 
-    raise HTTPException(status_code=401, detail="Invalid credentials")
+@app.get("/posts")
+def get_posts(db: Session = Depends(get_db)):
+    posts = db.query(PostModel).all()
+    return posts
 
-@app.get("/protected")
-def protected_route(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        return { "message": f"Hello, {username}! You are authenticated." }
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+@app.post("/posts/{post_id}/comments")
+def add_comment(post_id: str, comment: Comment, credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    username = get_current_user(credentials)
+    post = db.query(PostModel).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    new_comment = CommentModel(post_id=post_id, username=username, content=comment.content)
+    db.add(new_comment)
+    db.commit()
+    return {"message": "Comment added"}
 
+@app.patch("/posts/{post_id}/like")
+def like_post(post_id: str, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    post = db.query(PostModel).filter_by(id=post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    liked_by_list = post.liked_by.split(",") if post.liked_by else []
+    if current_user in liked_by_list:
+        raise HTTPException(status_code=400, detail="Already liked")
+    post.likes += 1
+    liked_by_list.append(current_user)
+    post.liked_by = ",".join(liked_by_list)
+    db.commit()
+    return post
 # To run: uvicorn main:app --reload
