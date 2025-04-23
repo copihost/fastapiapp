@@ -1,0 +1,84 @@
+[
+  {
+    "id": "f9faa4b0-23fc-4c7a-abf9-9e41c21a7835",
+    "username": "alice",
+    "content": "this is a test post\n",
+    "image": "",
+    "likes": 1,
+    "comments": [
+      {
+        "username": "alice",
+        "content": "testing",
+        "timestamp": "2025-04-23T02:29:20.870810"
+      },
+      {
+        "username": "mark",
+        "content": "testing2",
+        "timestamp": "2025-04-23T02:29:33.414409"
+      }
+    ],
+    "liked_by": [
+      "alice"
+    ]
+  },
+  {
+    "id": "6319fbfb-92b8-42f1-8fe5-e7ad53b37c8d",
+    "username": "alice",
+    "content": "hello4\n",
+    "image": "",
+    "likes": 1,
+    "comments": [
+      {
+        "username": "alice",
+        "content": "hi6",
+        "timestamp": "2025-04-23T02:28:14.258111"
+      }
+    ],
+    "liked_by": [
+      "alice"
+    ]
+  },
+  {
+    "id": "caef918c-2a69-4610-9fd4-4dd497e4d02a",
+    "username": "alice",
+    "content": "hello3",
+    "image": "",
+    "likes": 3,
+    "liked_by": [
+      "alice",
+      "testuser",
+      "mark"
+    ],
+    "comments": [
+      {
+        "username": "bob",
+        "content": "Nice post!",
+        "timestamp": "2025-04-22T15:00:00"
+      }
+    ]
+  },
+  {
+    "id": "a8d910b4-3868-47af-99ec-8ade830bf1e7",
+    "username": "alice",
+    "content": "cute dog pics for the tl",
+    "image": "https://hips.hearstapps.com/hmg-prod/images/dog-puppy-on-garden-royalty-free-image-1586966191.jpg?crop=1.00xw:0.669xh;0,0.190xh&resize=1200:*",
+    "likes": 3,
+    "liked_by": [
+      "admin",
+      "bob",
+      "alice"
+    ],
+    "comments": [
+      {
+        "username": "bob",
+        "content": "Nice post!",
+        "timestamp": "2025-04-22T15:00:00"
+      },
+      {
+        "username": "alice",
+        "content": "that dog is so cute",
+        "timestamp": "2025-04-23T02:28:40.753282"
+      }
+    ]
+  }
+]
